@@ -1,0 +1,8 @@
+.env
+.env.local
+.venv
+__pycache__/
+.ruff_cache/
+deep-agents-ui-main/
+deep_research_example.egg-info/
+output/
