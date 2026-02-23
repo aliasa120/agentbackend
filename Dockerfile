@@ -14,6 +14,9 @@ RUN pip install uv
 # Copy the dependencies file
 COPY pyproject.toml ./
 
+# Create empty package structure to allow pip install -e . to succeed for dependency caching
+RUN mkdir research_agent && touch research_agent/__init__.py
+
 # Install the application and its dependencies (including langgraph-cli)
 RUN uv pip install --system -e .
 
