@@ -1,16 +1,17 @@
-"""Visual image inspection tool — lets the agent actually SEE candidate images.
-Also saves all downloaded images to output/candidate_images/ for reference,
-and writes a URL→file manifest so create_post_image_gemini can reuse them.
+"""Visual image inspection tool.
 
-Updated: Downloads ALL images (up to 10) and sends them all to the agent
-for visual quality inspection. The agent (vision-capable) picks the best one
-based on visual quality, story relevance, and cleanliness (no foreign logos).
+Flow (like a friend giving you a pendrive with downloaded photos):
+1. Download ALL images from provided URLs at FULL RESOLUTION → save to output/candidate_images/
+2. Show small 400px thumbnails as base64 so the agent can SEE each image visually
+3. Agent selects the best one
+4. create_post_image_gemini loads the full-res file from disk and sends it to Gemini
+
+Keeps a URL→filepath manifest so create_post_image_gemini knows which file to load.
 """
 
 import base64
 import io
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -21,166 +22,149 @@ from PIL import Image
 _CANDIDATE_DIR = Path("output") / "candidate_images"
 _MANIFEST_FILE = _CANDIDATE_DIR / "manifest.json"
 
+# Small thumbnail for vision preview (keeps base64 small enough to fit in context)
+_THUMB_PX = 400
 
-def _url_to_data_uri(url: str, max_px: int = 800) -> tuple[str | None, bytes | None]:
-    """Download image, downscale for vision API, return (data_uri, raw_bytes). Both None on failure."""
+# Max images to show visually (showing more causes "large tool result")
+_MAX_SHOW = 5
+
+
+def _download(url: str) -> bytes | None:
     try:
-        resp = requests.get(
+        r = requests.get(
             url,
-            timeout=10,
+            timeout=12,
             headers={"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"},
         )
-        resp.raise_for_status()
-        img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-
-        # Downscale for vision API (keeps token count manageable)
-        w, h = img.size
-        longest = max(w, h)
-        if longest > max_px:
-            scale = max_px / longest
-            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-
-        # Save downscaled version as data URI for vision
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=82)
-        raw = buf.getvalue()
-        b64 = base64.b64encode(raw).decode()
-        return f"data:image/jpeg;base64,{b64}", raw
+        r.raise_for_status()
+        return r.content
     except Exception as e:
-        print(f"[view_candidate_images] Failed to download {url}: {e}")
-        return None, None
+        print(f"[view_candidate_images] Download failed {url[:60]}: {e}")
+        return None
 
 
-def _save_full_res(url: str, save_path: Path) -> bool:
-    """Download and save the full-resolution image to disk for Gemini editing later."""
+def _save_full_res(raw: bytes, path: Path) -> bool:
     try:
-        resp = requests.get(
-            url,
-            timeout=15,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)"},
-        )
-        resp.raise_for_status()
-        img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-        # Save at full resolution (no downscale) so Gemini gets best quality
-        img.save(str(save_path), "JPEG", quality=95)
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        img.save(str(path), "JPEG", quality=95)
         return True
     except Exception as e:
-        print(f"[view_candidate_images] Failed to save full-res {url}: {e}")
+        print(f"[view_candidate_images] Save failed: {e}")
         return False
+
+
+def _thumb_b64(raw: bytes) -> str | None:
+    """Make a small 400px JPEG thumbnail and return as base64 data URI."""
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        w, h = img.size
+        scale = _THUMB_PX / max(w, h)
+        if scale < 1.0:
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=72)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        return f"data:image/jpeg;base64,{b64}"
+    except Exception as e:
+        print(f"[view_candidate_images] Thumbnail failed: {e}")
+        return None
 
 
 @tool(parse_docstring=True)
 def view_candidate_images(image_urls: list[str]) -> list[dict[str, Any]]:
-    """Download ALL candidate images and show them to you for visual quality selection.
+    """Download ALL candidate images and display them visually for selection.
 
-    Downloads every image URL (up to 10), saves them all to output/candidate_images/,
-    then shows ALL of them to you so you can judge each one visually.
+    Downloads every image at FULL RESOLUTION to disk (for Gemini later),
+    then shows small 400px thumbnails so you can SEE each image with your vision.
 
-    You are a vision-capable model — look at every image carefully and pick the
-    BEST one based on:
-    - **Relevance**: Does the image match the news story?
-    - **Cleanliness**: Is it free from other news channel logos, banners, or text overlays?
-    - **Visual quality**: Is it sharp, well-composed, high-resolution?
-    - **Impact**: Would it stop a scroll on social media?
+    Evaluate each image you see:
+    - **Cleanliness** (MOST IMPORTANT) — must be FREE of other outlet logos,
+      chyrons, banners, or text overlays. REJECT any image with foreign branding.
+    - **Relevance** — directly depicts the news story.
+    - **Visual quality** — sharp, well-lit, professionally composed.
+    - **Impact** — eye-catching on social media.
 
-    REJECT images that already have another news outlet's watermark, logo banner,
-    or text overlay on them — the image must be a clean photo for Gemini to edit.
+    After viewing all images, use think_tool to record:
+    1. A 1-line assessment of each image (clean? relevant? quality?)
+    2. Which image you chose and WHY
+    3. The exact URL of your chosen image
+    4. Which layout from the 20-layout table you will use
 
-    Call this AFTER fetch_images_exa, passing ALL image URLs from that output.
-    After seeing all images, call create_post_image_gemini with the chosen URL.
+    Then call create_post_image_gemini with the chosen URL.
 
     Args:
-        image_urls: List of direct image URLs returned by fetch_images_exa.
-                    Pass ALL URLs (up to 10) as plain strings.
+        image_urls: All image URLs returned by fetch_images_exa (pass all of them).
 
     Returns:
-        Multimodal content blocks showing ALL images with labels for visual comparison.
+        Multimodal content with visual thumbnails of all downloaded images.
     """
     _CANDIDATE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Accept up to 10 images
-    urls = image_urls[:10]
+    # Skip obviously bad URLs (animated GIFs etc)
+    urls = [u for u in image_urls[:10] if u and not u.lower().endswith(".gif")]
 
-    content: list[dict[str, Any]] = [
-        {
-            "type": "text",
-            "text": (
-                f"Here are ALL {len(urls)} candidate image(s) for this story. "
-                f"Every image has been downloaded to output/candidate_images/ at full resolution.\n\n"
-                "INSPECT EACH IMAGE CAREFULLY and choose the single best one.\n"
-                "Criteria: (1) Clean — no other news outlet logo or text banner visible, "
-                "(2) Relevant — matches the story, "
-                "(3) High visual quality — sharp and well-composed, "
-                "(4) Impact — eye-catching for social media.\n"
-            ),
-        }
-    ]
+    manifest: dict[str, str] = {}          # url → local filepath
+    downloaded: list[tuple[int, str, bytes]] = []   # (index, url, raw_bytes)
 
-    # manifest maps URL -> saved full-res file path
-    manifest: dict[str, str] = {}
-
-    loaded = 0
+    # Step 1 — Download everything at full res to disk
     for i, url in enumerate(urls, 1):
-        # Download downscaled version for vision
-        data_uri, _ = _url_to_data_uri(url)
+        raw = _download(url)
+        if not raw:
+            continue
+        save_path = _CANDIDATE_DIR / f"image_{i}.jpg"
+        if _save_full_res(raw, save_path):
+            manifest[url] = str(save_path)
+            downloaded.append((i, url, raw))
+            print(f"[view_candidate_images] ✅ image_{i}.jpg ({len(raw)//1024}KB)")
 
-        # Save full-resolution separately for Gemini editing
-        full_res_path = _CANDIDATE_DIR / f"image_{i}.jpg"
-        saved_ok = _save_full_res(url, full_res_path)
-
-        if data_uri and saved_ok:
-            manifest[url] = str(full_res_path)
-            content.append({"type": "text", "text": f"\n---\nImage {i} of {len(urls)}: {url}"})
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": data_uri},
-                }
-            )
-            loaded += 1
-        elif data_uri:
-            # Vision worked but full-res save failed — still show it but don't cache it
-            content.append({"type": "text", "text": f"\n---\nImage {i} of {len(urls)}: {url}  (⚠️ full-res save failed)"})
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": data_uri},
-                }
-            )
-            loaded += 1
-        else:
-            content.append(
-                {"type": "text", "text": f"\n---\nImage {i} of {len(urls)}: {url}  ← (❌ failed to download — skip this one)"}
-            )
-
-    # Save manifest so create_post_image_gemini can reuse downloaded files
+    # Persist manifest for create_post_image_gemini
     _MANIFEST_FILE.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print(f"[view_candidate_images] Saved manifest with {len(manifest)} entries to {_MANIFEST_FILE}")
-    print(f"[view_candidate_images] Successfully loaded {loaded}/{len(urls)} images.")
+    print(f"[view_candidate_images] Manifest: {len(manifest)} images saved")
 
-    if loaded == 0:
-        return [
-            {
-                "type": "text",
-                "text": (
-                    "All image downloads failed. Fall back to title-based selection: "
-                    "pick the fetch_images_exa result whose title best matches the story, "
-                    "then call create_post_image_gemini directly with that URL."
-                ),
-            }
-        ]
+    if not downloaded:
+        return [{"type": "text", "text": (
+            "All image downloads failed. Call create_post_image_gemini "
+            "directly with the best URL from fetch_images_exa."
+        )}]
 
-    content.append(
-        {
-            "type": "text",
-            "text": (
-                f"\n---\nYou have seen all {loaded} image(s). "
-                "Now use think_tool to record:\n"
-                "1. Which image number you chose and WHY (visual quality, cleanliness, relevance)\n"
-                "2. The exact URL of the chosen image\n"
-                "3. The layout name from the 20-layout table you will use for editing\n"
-                "Then call create_post_image_gemini with the chosen URL."
-            ),
-        }
-    )
+    total = len(downloaded)
+
+    # Step 2 — Build vision response with thumbnails
+    content: list[dict[str, Any]] = [{
+        "type": "text",
+        "text": (
+            f"✅ Downloaded {total} image(s) to output/candidate_images/ (full resolution).\n"
+            f"Here are the thumbnails — inspect each one carefully:\n\n"
+            "Pick the BEST image:\n"
+            "  ❌ REJECT if it has another outlet's logo, chyron, or burnt-in text\n"
+            "  ✅ PREFER clean, relevant, sharp, impactful photos\n"
+        ),
+    }]
+
+    shown = 0
+    not_shown: list[tuple[int, str]] = []
+
+    for idx, url, raw in downloaded:
+        if shown < _MAX_SHOW:
+            data_uri = _thumb_b64(raw)
+            content.append({"type": "text", "text": f"\n--- Image {idx}: {url}"})
+            if data_uri:
+                content.append({"type": "image_url", "image_url": {"url": data_uri}})
+            else:
+                content.append({"type": "text", "text": "  (thumbnail failed — judge by title)"})
+            shown += 1
+        else:
+            not_shown.append((idx, url))
+
+    if not_shown:
+        lines = [f"\nImages downloaded but not shown (judge by title/relevance):"]
+        for idx, url in not_shown:
+            lines.append(f"  Image {idx}: {url}")
+        content.append({"type": "text", "text": "\n".join(lines)})
+
+    content.append({"type": "text", "text": (
+        f"\n---\nAll {total} images saved to disk at FULL RESOLUTION for Gemini editing.\n"
+        "Now use think_tool to make your selection, then call create_post_image_gemini."
+    )})
+
     return content
