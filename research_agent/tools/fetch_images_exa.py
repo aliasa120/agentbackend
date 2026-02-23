@@ -1,6 +1,7 @@
 """Exa AI image search tool — fetches OG images from news articles."""
 
 import os
+import time
 
 from exa_py import Exa
 from langchain_core.tools import tool
@@ -14,7 +15,6 @@ def _get_exa_client():
     if _exa_client is None:
         _exa_client = Exa(api_key=os.environ.get("EXA_API_KEY", ""))
     return _exa_client
-
 
 
 @tool(parse_docstring=True)
@@ -37,40 +37,49 @@ def fetch_images_exa(query: str, category: str = "news") -> str:
         Pick the image whose title best matches the story you are writing about.
         Returns a skip message if no images are found.
     """
-    try:
-        results = _get_exa_client().search(
-            query=query,
-            type="auto",
-            num_results=10,
-            category=category if category in ("news", "general") else "news",
-        )
+    last_err = None
 
-        images = [
-            {
-                "image_url": result.image,
-                "title": result.title or "(no title)",
-                "source_url": result.url or "",
-            }
-            for result in results.results
-            if getattr(result, "image", None)
-        ]
-
-        if not images:
-            return (
-                "No OG images found for this query via Exa. "
-                "Skip the image pipeline steps."
+    for attempt in range(1, 4):          # 3 attempts with delay between each
+        try:
+            results = _get_exa_client().search(
+                query=query,
+                type="auto",
+                num_results=10,
+                category=category if category in ("news", "general") else "news",
             )
 
-        lines = ["OG IMAGES FOUND — pick the one whose title best matches your story:\n"]
-        for i, img in enumerate(images, 1):
-            lines.append(f"{i}. Title:      {img['title']}")
-            lines.append(f"   Source:     {img['source_url']}")
-            lines.append(f"   Image URL:  {img['image_url']}\n")
+            images = [
+                {
+                    "image_url": result.image,
+                    "title": result.title or "(no title)",
+                    "source_url": result.url or "",
+                }
+                for result in results.results
+                if getattr(result, "image", None)
+            ]
 
-        return "\n".join(lines)
+            if not images:
+                return (
+                    "No OG images found for this query via Exa. "
+                    "Skip the image pipeline steps."
+                )
 
-    except Exception as e:
-        return (
-            f"Exa image search failed: {e}. "
-            "Skip image pipeline steps and save social_posts.md without images."
-        )
+            lines = ["OG IMAGES FOUND — pick the one whose title best matches your story:\n"]
+            for i, img in enumerate(images, 1):
+                lines.append(f"{i}. Title:      {img['title']}")
+                lines.append(f"   Source:     {img['source_url']}")
+                lines.append(f"   Image URL:  {img['image_url']}\n")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            last_err = e
+            print(f"[fetch_images_exa] Attempt {attempt}/3 failed: {e}")
+            if attempt < 3:
+                print(f"[fetch_images_exa] Retrying in 3 seconds...")
+                time.sleep(3)           # wait 3 s then retry
+
+    return (
+        f"Exa image search failed after 3 attempts: {last_err}. "
+        "Skip image pipeline steps and save social_posts.md without images."
+    )
