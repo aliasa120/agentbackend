@@ -1184,63 +1184,92 @@ Use the same keyword query that worked best in your research.
 fetch_images_exa(query="[best keyword query]", category="news")
 ```
 
-The tool returns a numbered list of articles with their OG image URL and title.
-If it returns "No OG images found" or fails → skip Steps 7c, 7d, and 7e entirely.
+The tool returns a numbered list of up to 10 articles with their OG image URLs and titles.
+If it returns "No OG images found" or fails → skip Steps 7c and 7d entirely.
 
 ---
 
-### Step 7c — Visually Inspect Candidate Images
+### Step 7c — Visually Inspect ALL Candidate Images
 
 You are a **vision-capable model** — you can SEE actual images.
-Call `view_candidate_images` with the image URLs from the fetch output:
+Call `view_candidate_images` with **ALL** image URLs returned by `fetch_images_exa`:
 
 ```
 view_candidate_images(image_urls=["https://...", "https://...", ...])
 ```
 
-Pass ALL image URLs returned by `fetch_images_exa` (up to 5).
-You will be shown the actual photos. Evaluate each one for:
-- **Relevance** — Does the image match the news story?
-- **Quality** — Is it sharp, well-composed, and professional-looking?
-- **Visual impact** — Would it stop a scroll on social media?
+**Pass ALL URLs** (up to 10) — the tool downloads every image at full resolution to disk,
+then shows them all to you for visual inspection.
 
-After seeing the images, use `think_tool` to record:
-- Which image is best and *why* (visual reason, not just title match)
-- The exact URL of the chosen image
+For each image you see, evaluate:
+- **Cleanliness** (most important) — Is it FREE from other news outlet logos, chyrons,
+  banner overlays, or watermarks? REJECT any image that already has text/branding on it.
+- **Relevance** — Does the image directly relate to the news story?
+- **Visual quality** — Is it sharp, well-lit, and professionally composed?
+- **Impact** — Would it stop a scroll on social media?
+
+After seeing all images, use `think_tool` to record:
+1. Your visual assessment of each image (1 line per image)
+2. Which image number you chose and WHY
+3. The exact URL of the chosen image
+4. Which layout from the 20-layout table below you will use
 
 ---
 
 ### Step 7d — Create the Social Post Image
 
-**Before** calling `create_post_image_gemini`, write a vivid, story-specific `editing_prompt`.
-Adapt the visual style to the **story's tone and category** — do NOT always use the same style:
+**Before** calling `create_post_image_gemini`, write a vivid, **story-specific** `editing_prompt`.
 
-| Story type | Style to use |
-|---|---|
-| Breaking political news | BBC / ARY News: white card, bold red accent bar, dark tone |
-| Sports | Dynamic: gradient overlay (team color), bold white headline, energy feel |
-| Economic / finance | Clean Bloomberg-style: dark gradient bottom, gold/white text, minimal |
-| Humanitarian / disaster | Muted, sombre tone: dark overlay, white serif text, emotional weight |
-| Celebrity / entertainment | Vibrant: colorful gradient, modern sans-serif, bright and punchy |
-| Science / tech | Sleek blue/teal gradient bottom, clean modern type, futuristic |
+#### Pick Your Layout (choose the best fit from the 20 below):
+
+| # | Layout Name | Style Description |
+|---|---|---|
+| 1 | **ARY Breaking Red** | White card bottom 28%, bold red left accent bar, red kicker badge, dark headline, red bottom strip |
+| 2 | **BBC Minimal White** | Pure white semi-transparent card, bold black headline, "BREAKING" in small red badge top-left |
+| 3 | **CNN Dark Gradient** | Heavy black gradient bottom 35%, bold white headline, white teaser below, red CNN-style kicker tag |
+| 4 | **Al Jazeera Yellow Frame** | Thin yellow accent frame on bottom card, dark card, white headline, yellow kicker square badge |
+| 5 | **Bloomberg Gold Finance** | Dark navy gradient bottom, gold kicker line, bold white headline, grey monospace spice line |
+| 6 | **Sports Energy Green** | Diagonal lime-green slash overlay on bottom, white italic headline, neon glow on text |
+| 7 | **Sports Energy Red** | Diagonal red slash, white bold headline, thin scoreboard-style data strip at very bottom |
+| 8 | **Election Blue** | Deep navy card bottom 32%, election-blue left accent bar, bold white headline, italic white teaser |
+| 9 | **Geo Pakistan Style** | Green bottom card, white headline, green left accent bar, orange-red breaking kicker |
+| 10 | **Dawn Minimal Grey** | Pale grey semi-transparent card, dark serif-feel headline, thin black accent bar, small timestamp |
+| 11 | **Instagram Centered Dark** | Dark semi-transparent bands top+bottom, bold white headline centered in middle of image |
+| 12 | **Disaster/Humanitarian Black** | Dark desaturated full-bottom overlay, white serif headline, muted red "URGENT" kicker |
+| 13 | **Neon Cyber** | Glowing cyan/purple neon kicker badge, dark glass card, bold white headline, futuristic feel |
+| 14 | **Science Tech Teal** | Dark teal gradient, monospace kicker, bold white headline, blue accent line |
+| 15 | **Finance Green** | Forest green card, gold accent bar, white headline with highlighted numbers |
+| 16 | **Warm Editorial Orange** | Amber/orange gradient, white serif headline, cream italic spice line, magazine editorial feel |
+| 17 | **Investigation Dark** | Dramatic dark vignette, red "INVESTIGATION" badge top-left, large white headline centered |
+| 18 | **Military Khaki** | Dark olive card, tactical font feel, yellow kicker "DEVELOPING", bold white headline |
+| 19 | **Health Medical Blue** | Clean white card, blue accent cross icon area, dark blue headline, reassuring clean tone |
+| 20 | **Viral Trending Gradient** | Eye-catching purple-pink gradient card, bold outlined white headline, 🔥 TRENDING kicker |
+
+#### Your editing_prompt MUST include 3 text layers:
+
+1. **KICKER** (2-4 words, small caps, above headline): e.g. `BREAKING NEWS` · `COURT RULING` · `EXCLUSIVE` · `DEVELOPING` · `LIVE UPDATE` · `OFFICIAL STATEMENT`
+2. **HEADLINE** (bold, large): Hook line from your X post — max 10 words
+3. **SPICE LINE / TEASER** (smaller, below headline): One compelling sentence that makes the viewer want to read the full story — max 15 words. Make it intriguing, not just a repeat of the headline.
 
 **Your prompt must always include:**
-- Exact overlay position & size (e.g. "bottom 28% of image")
-- Card/overlay style (semi-transparent, frosted, gradient, dark)
-- Accent color and bar/stripe placement
-- Headline text placement and font feel (bold black, bold white, etc.)
-- Mood/atmosphere (dramatic, energetic, sombre, clean)
-- `"Preserve original photo quality, sharpness and colors exactly — only add the overlay."`
-- `"Do not upscale, blur, or re-compress the original image."` 
+- The layout name you chose and its exact visual description
+- Exact overlay position & size (e.g. "bottom 30% of image")
+- All 3 text layers with exact wording for each
+- Accent color, bar/stripe, and badge placement
+- `"newsagent.ai"` watermark in small grey text at bottom-right
+- `"Preserve original photo quality, sharpness and colors exactly — only add overlay and text. Do not upscale, blur, or re-compress."`
 
-Example for a sports story:
-> "Edit this cricket celebration photo with a dynamic sports broadcast style. Add a bold
-> dark-red gradient overlay at the bottom 28% of the image that fades to transparent upward.
-> Overlay the headline 'England Crush Sri Lanka on Brook's Birthday' in large bold white text
-> centered inside the gradient. Add a thin white line across the top edge of the gradient.
-> Subtle dark vignette around the photo edges for depth. Small grey 'newsagent.ai' watermark
-> at bottom-right corner. Preserve original photo quality, sharpness and colors exactly —
-> only add the overlay. Do not upscale, blur, or re-compress the original image."
+**Example editing_prompt (CNN Dark Gradient layout, political story):**
+> "Edit this courtroom photo using the CNN Dark Gradient layout. Add a heavy black gradient
+> overlay covering the bottom 35% of the image, fading to transparent upward. Place 3 text
+> layers inside the gradient: (1) KICKER — small bold red tag reading 'COURT RULING' in the
+> top-left of the overlay; (2) HEADLINE — bold large white text 'IHC Reaffirms CJ as Master
+> of Roster' centered below the kicker; (3) SPICE LINE — smaller italic white text below the
+> headline reading 'A landmark verdict that reshapes judicial power in Pakistan'. Add a thin
+> red horizontal line separating the kicker from the headline. Add a subtle dark vignette
+> around the image corners for cinematic depth. Place 'newsagent.ai' in small grey text at
+> bottom-right. Preserve original photo quality, sharpness and colors exactly — only add
+> overlay and text. Do not upscale, blur, or re-compress."
 
 Then call:
 
@@ -1326,7 +1355,7 @@ If verification fails, revise the posts (Step 6) or search again (Step 4).
 7. **Be specific** — exact names, dates, quotes, locations — no generalities.
 8. **Stay neutral** — present all sides found in research; no editorialising.
 9. **Save files** — always write `/news_input.md` and `/social_posts.md`.
-10. **Image pipeline** — always attempt Steps 7b→7c→7d after saving posts; in 7c call `view_candidate_images` to VISUALLY inspect images (they are also saved to `output/candidate_images/`); in 7d call `create_post_image_gemini` (not `create_post_images`); skip gracefully if `fetch_images_exa` returns no results or fails.
+10. **Image pipeline** — always attempt Steps 7b→7c→7d after saving posts. In 7c, pass ALL URLs (up to 10) to `view_candidate_images` — it downloads every image at full resolution to `output/candidate_images/` and shows them ALL to you so you can pick visually. In 7d, pick a named layout from the 20-layout table and write a 3-layer overlay prompt (kicker + headline + spice line). Call `create_post_image_gemini` (not `create_post_images`). Skip gracefully only if `fetch_images_exa` returns no results or fails entirely.
 """
 
 SUBAGENT_DELEGATION_INSTRUCTIONS = """# Sub-Agent Research Coordination
