@@ -20,6 +20,7 @@ from research_agent.tools import (
     think_tool,
     view_candidate_images,
 )
+from research_agent.tools.save_to_supabase import save_posts_to_supabase
 
 # Inject today's date into the unified prompt
 INSTRUCTIONS = MAIN_AGENT_INSTRUCTIONS.format(date=datetime.now().strftime("%Y-%m-%d"))
@@ -35,6 +36,15 @@ model = ChatOpenAI(
 # Create the single agent — no subagents list
 agent = create_deep_agent(
     model=model,
-    tools=[linkup_search, think_tool, tavily_extract, fetch_images_exa, view_candidate_images, create_post_image_gemini],
+    tools=[
+        linkup_search,
+        think_tool,
+        tavily_extract,
+        fetch_images_exa,
+        view_candidate_images,
+        create_post_image_gemini,
+        save_posts_to_supabase,
+    ],
     system_prompt=INSTRUCTIONS,
 )
+

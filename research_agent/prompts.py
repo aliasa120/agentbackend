@@ -486,6 +486,44 @@ Read `/news_input.md` and `/social_posts.md`, then confirm:
 
 ---
 
+### Step 8: Save Posts to Database
+
+**Objective:** Persist all posts and the image to Supabase so the web UI displays them.
+
+**Action:** Call `save_posts_to_supabase` and pass the COMPLETE text of `/social_posts.md` that you wrote in Step 6.
+
+**IMPORTANT:** You must pass the full markdown string as the `social_posts_markdown` argument — do NOT leave it empty.
+
+**Example:**
+```
+save_posts_to_supabase(
+    social_posts_markdown="""# Social Media Posts: Gold slips 0.65%...
+
+## X (Twitter)
+...
+
+## Instagram
+...
+
+## Facebook
+...
+
+## Sources
+...
+"""
+)
+```
+
+The tool will:
+1. Parse the markdown into platform-specific fields
+2. Upload the generated image to Supabase Storage
+3. Insert a row into the `social_posts` table
+4. Return a confirmation with the database row ID
+
+**This is the final step — do not skip it.**
+
+---
+
 ## Complete Example Workflow
 
 **Input:**
@@ -520,6 +558,11 @@ Return findings for each target with sources.")
 
 **Step 7 - Verify and complete**
 
+**Step 8 - Save to Supabase:**
+```
+save_posts_to_supabase(social_posts_markdown="[full content of social_posts.md you wrote]")
+```
+
 ---
 
 ## Important Reminders
@@ -529,6 +572,7 @@ Return findings for each target with sources.")
 3. Cite sources - Every fact needs attribution
 4. Be specific - Use exact names, dates, and quotes from research
 5. Stay neutral - Present all sides found in research
+6. **ALWAYS call `save_posts_to_supabase` as the final step** — pass the full markdown text you wrote in Step 6
 """
 
 RESEARCHER_INSTRUCTIONS = """# Research Assistant for News-to-Social Media Pipeline
@@ -1344,6 +1388,19 @@ If verification fails, revise the posts (Step 6) or search again (Step 4).
 
 ---
 
+### Step 8 — Save Posts to Database (MANDATORY FINAL STEP)
+
+After verification passes, call `save_posts_to_supabase` with no arguments.
+This saves the post content and image to Supabase so the web UI can display it at /posts.
+
+```
+save_posts_to_supabase()
+```
+
+This is the LAST tool call of every run. Never skip it.
+
+---
+
 ## Critical Rules
 
 1. **Search yourself** — call `linkup_search` directly; never delegate.
@@ -1354,9 +1411,10 @@ If verification fails, revise the posts (Step 6) or search again (Step 4).
 6. **Cite every fact** — use `[1]`, `[2]`, `[3]` inline citations.
 7. **Be specific** — exact names, dates, quotes, locations — no generalities.
 8. **Stay neutral** — present all sides found in research; no editorialising.
-9. **Save files** — always write `/news_input.md` and `/social_posts.md`.
+9. **Save files AND database** — always write `/news_input.md` and `/social_posts.md`, then call `save_posts_to_supabase` as the final step.
 10. **Image pipeline** — always attempt Steps 7b→7c→7d after saving posts. In 7c, pass ALL URLs (up to 10) to `view_candidate_images` — it downloads every image at full resolution to `output/candidate_images/` and shows them ALL to you so you can pick visually. In 7d, pick a named layout from the 20-layout table and write a 3-layer overlay prompt (kicker + headline + spice line). Call `create_post_image_gemini` (not `create_post_images`). Skip gracefully only if `fetch_images_exa` returns no results or fails entirely.
 """
+
 
 SUBAGENT_DELEGATION_INSTRUCTIONS = """# Sub-Agent Research Coordination
 

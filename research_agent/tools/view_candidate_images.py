@@ -25,8 +25,8 @@ _MANIFEST_FILE = _CANDIDATE_DIR / "manifest.json"
 # Small thumbnail for vision preview (keeps base64 small enough to fit in context)
 _THUMB_PX = 400
 
-# Max images to show visually (showing more causes "large tool result")
-_MAX_SHOW = 5
+# Max images to show visually (3 keeps base64 size under LangGraph's tool result limit)
+_MAX_SHOW = 3
 
 
 def _download(url: str) -> bytes | None:
