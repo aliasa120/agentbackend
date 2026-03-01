@@ -22,6 +22,15 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "langgraph-cli[inmem]>=0.1.55",
     "langchain-google-genai>=3.1.0",
+    "supabase>=2.28.0",
+    "feedparser>=6.0.12",
+    "litellm>=1.81.16",
+    "fuzzywuzzy>=0.18.0",
+    "python-levenshtein>=0.27.3",
+    "spacy>=3.8.11",
+    "smartcrop>=0.4.2",
+    "pinecone>=8.1.0",
+    "cerebras-cloud-sdk>=1.67.0",
 ]
 
 [tool.uv]
@@ -41,7 +50,7 @@ requires = ["setuptools>=73.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["research_agent"]
+packages = ["research_agent", "feeder", "feeder.feeder_agent"]
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]

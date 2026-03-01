@@ -22,11 +22,11 @@ from PIL import Image
 _CANDIDATE_DIR = Path("output") / "candidate_images"
 _MANIFEST_FILE = _CANDIDATE_DIR / "manifest.json"
 
-# Small thumbnail for vision preview (keeps base64 small enough to fit in context)
-_THUMB_PX = 400
+# Small thumbnail for vision preview — must stay tiny to fit 10 images in one tool result
+_THUMB_PX = 200   # 200px wide keeps each thumb ~15KB
 
-# Max images to show visually (3 keeps base64 size under LangGraph's tool result limit)
-_MAX_SHOW = 3
+# Show ALL images (we keep thumbnails tiny enough that 10 fit without overflow)
+_MAX_SHOW = 10
 
 
 def _download(url: str) -> bytes | None:
@@ -54,7 +54,7 @@ def _save_full_res(raw: bytes, path: Path) -> bool:
 
 
 def _thumb_b64(raw: bytes) -> str | None:
-    """Make a small 400px JPEG thumbnail and return as base64 data URI."""
+    """Make a small 200px JPEG thumbnail and return as base64 data URI."""
     try:
         img = Image.open(io.BytesIO(raw)).convert("RGB")
         w, h = img.size
@@ -62,7 +62,7 @@ def _thumb_b64(raw: bytes) -> str | None:
         if scale < 1.0:
             img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
         buf = io.BytesIO()
-        img.save(buf, "JPEG", quality=72)
+        img.save(buf, "JPEG", quality=45)  # low quality = tiny base64
         b64 = base64.b64encode(buf.getvalue()).decode()
         return f"data:image/jpeg;base64,{b64}"
     except Exception as e:
@@ -93,7 +93,7 @@ def view_candidate_images(image_urls: list[str]) -> list[dict[str, Any]]:
     Then call create_post_image_gemini with the chosen URL.
 
     Args:
-        image_urls: All image URLs returned by fetch_images_exa (pass all of them).
+        image_urls: All image URLs returned by fetch_images_brave (pass all of them).
 
     Returns:
         Multimodal content with visual thumbnails of all downloaded images.

@@ -6,9 +6,6 @@ from typing import List
 from langchain_core.tools import tool
 from tavily import TavilyClient
 
-_tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY", ""))
-
-
 @tool(parse_docstring=True)
 def tavily_extract(urls: List[str], query: str = "") -> str:
     """Extract full article content from up to 2 credible URLs.
@@ -41,6 +38,7 @@ def tavily_extract(urls: List[str], query: str = "") -> str:
         Extracted markdown content for each URL, separated by a divider.
         Failed URLs are reported with an error message.
     """
+    _tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY", ""))
     # Enforce the 2-URL cap at the tool level so the agent cannot accidentally
     # exceed the budget even if the prompt guard fails.
     urls = urls[:2]

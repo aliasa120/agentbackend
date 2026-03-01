@@ -14,7 +14,7 @@ from deepagents import create_deep_agent
 from research_agent.prompts import MAIN_AGENT_INSTRUCTIONS
 from research_agent.tools import (
     create_post_image_gemini,
-    fetch_images_exa,
+    fetch_images_brave,
     linkup_search,
     tavily_extract,
     think_tool,
@@ -40,7 +40,7 @@ agent = create_deep_agent(
         linkup_search,
         think_tool,
         tavily_extract,
-        fetch_images_exa,
+        fetch_images_brave,
         view_candidate_images,
         create_post_image_gemini,
         save_posts_to_supabase,
